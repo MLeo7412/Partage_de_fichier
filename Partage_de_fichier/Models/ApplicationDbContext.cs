@@ -1,5 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using Partage_de_fichier.Models; // On n'utilise plus que ce namespace unique
+using Partage_de_fichier.Models; 
 
 namespace Partage_de_fichier.Data
 {
