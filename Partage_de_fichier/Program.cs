@@ -1,10 +1,18 @@
 using Microsoft.EntityFrameworkCore;
 using Partage_de_fichier.Data;
+using Microsoft.AspNetCore.Authentication.Cookies;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Ajouter les services MVC au conteneur.
 builder.Services.AddControllersWithViews();
+
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.LoginPath = "/Account/Login"; // Redirige ici si l'utilisateur n'est pas connecté
+        options.ExpireTimeSpan = TimeSpan.FromHours(2); // La session expire après 2h
+    });
 
 //Enregistrer ApplicationDbContext pour utiliser PostgreSQL
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
@@ -22,11 +30,13 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 
 app.UseRouting();
+app.UseAuthentication(); 
+app.UseAuthorization();  
 
 app.UseAuthorization();
 
 app.MapControllerRoute(
     name: "default",
-    pattern: "{controller=AccountController}/{action=Login}/{id?}");
+    pattern: "{controller=Account}/{action=Login}/{id?}");
 
 app.Run();

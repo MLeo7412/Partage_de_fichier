@@ -1,0 +1,98 @@
+﻿@model Partage_de_fichier.ViewModels.FileShareViewModel
+
+@{
+    ViewData["Title"] = "Mes Fichiers";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Mon Espace de Stockage Sécurisé</h2>
+
+    <div class="d-flex align-items-center">
+        <span class="me-3 text-secondary">
+            Utilisateur: <strong class="text-primary">@User.Identity?.Name</strong>
+        </span>
+
+        <form asp-controller="Account" asp-action="Logout" method="post" class="m-0">
+            <button type="submit" class="btn btn-sm btn-outline-danger">Se déconnecter</button>
+        </form>
+    </div>
+</div>
+
+    @if (TempData["MessageSucces"] != null)
+    {
+        <div class="alert alert-success">@TempData["MessageSucces"]</div>
+    }
+
+    <div class="card mb-5">
+        <div class="card-body">
+            <h5 class="card-title">Ajouter un fichier</h5>
+            <form asp-action="Upload" enctype="multipart/form-data" method="post" class="d-flex align-items-center">
+                <input type="file" name="fichierUpload" class="form-control me-2" required />
+                <button type="submit" class="btn btn-primary">Ajouter un fichier </button>
+            </form>
+        </div>
+    </div>
+
+    <h4 class="mb-3">Mes fichiers stockés</h4>
+    <table class="table table-striped mb-5">
+        <thead class="table-dark">
+            <tr>
+                <th>Nom du fichier</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!Model.MesFichiers.Any())
+            {
+                <tr>
+                    <td colspan="2" class="text-center text-muted">Aucun fichier stocké pour le moment.</td>
+                </tr>
+            }
+            else
+            {
+                foreach (var fichier in Model.MesFichiers)
+                {
+                    <tr>
+                        <td>@fichier.NomFichier</td>
+                        <td>
+                            <a asp-action="Download" asp-route-id="@fichier.IdFichier" class="btn btn-sm btn-success">Télécharger</a>
+                            <a asp-controller="Share" asp-action="Index" asp-route-id="@fichier.IdFichier" class="btn btn-sm btn-warning">Partager</a>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+
+    <h4 class="mb-3">Fichiers partagés avec moi</h4>
+    <table class="table table-striped">
+        <thead class="table-info">
+            <tr>
+                <th>Nom du fichier</th>
+                <th>Propriétaire</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!Model.FichiersPartages.Any())
+            {
+                <tr>
+                    <td colspan="3" class="text-center text-muted">Aucun fichier partagé avec vous.</td>
+                </tr>
+            }
+            else
+            {
+                foreach (var fichier in Model.FichiersPartages)
+                {
+                    <tr>
+                        <td>@fichier.NomFichier</td>
+                        <td>@(fichier.Proprietaire?.NomUtilisateur ?? "Inconnu")</td>
+                        <td>
+                            <a asp-action="Download" asp-route-id="@fichier.IdFichier" class="btn btn-sm btn-success">Télécharger</a>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>

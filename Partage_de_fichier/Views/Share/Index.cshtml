@@ -1,0 +1,36 @@
+﻿@model Partage_de_fichier.ViewModels.ShareViewModel
+
+@{
+    ViewData["Title"] = "Partager un fichier";
+}
+
+<div class="container mt-5">
+    <h2>Partager le fichier : <span class="text-primary">@Model.NomFichier</span></h2>
+    <hr />
+
+    <div class="row">
+        <div class="col-md-5">
+            <div class="alert alert-info">
+                <strong>Sécurité :</strong> L'accès sera chiffré de bout en bout avec la clé publique du destinataire. Le serveur ne pourra pas lire le fichier.
+            </div>
+
+            <form asp-action="Index" method="post">
+                <input type="hidden" asp-for="IdFichier" />
+                <input type="hidden" asp-for="NomFichier" />
+
+                <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+                <div class="form-group mb-3">
+                    <label asp-for="NomUtilisateurCible" class="control-label"></label>
+                    <input asp-for="NomUtilisateurCible" class="form-control" placeholder="Entrez le pseudo exact..." />
+                    <span asp-validation-for="NomUtilisateurCible" class="text-danger"></span>
+                </div>
+
+                <div class="form-group">
+                    <button type="submit" class="btn btn-warning">Confirmer le partage</button>
+                    <a asp-controller="File" asp-action="Index" class="btn btn-secondary">Annuler</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
