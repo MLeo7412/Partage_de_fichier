@@ -33,29 +33,23 @@ namespace Partage_de_fichier.Controllers
         {
             if (ModelState.IsValid)
             {
-                // 1. Vérifier si l'utilisateur existe déjà
-                if (_context.Utilisateurs.Any(u => u.NomUtilisateur == model.NomUtilisateur))
-                {
-                    ModelState.AddModelError("", "Ce nom d'utilisateur est déjà pris.");
-                    return View(model);
-                }
+                // 1. Vérif existence...
+                if (_context.Utilisateurs.Any(u => u.NomUtilisateur == model.NomUtilisateur)) { /* ... */ }
 
-                // 2. Hacher le mot de passe avec Bcrypt (Le mot de passe n'est jamais en clair)
+                // 2. Hachage du mot de passe pour l'auth
                 string hash = BCrypt.Net.BCrypt.HashPassword(model.MotDePasse);
 
-                // 3. Générer la paire de clés RSA (2048 bits est le standard de sécurité)
+                // 3. Génération RSA
                 using var rsa = RSA.Create(2048);
-
-                // Exporter la clé publique (pour que les autres puissent lui partager des fichiers)
                 string clePublique = rsa.ExportRSAPublicKeyPem();
-
-                // Exporter la clé privée
                 string clePriveeEnClair = rsa.ExportRSAPrivateKeyPem();
 
-                // 4. Chiffrer la clé privée (Simulation : dans un vrai projet, on la chiffre avec AES en utilisant un dérivé du mot de passe)
-                string clePriveeChiffree = Convert.ToBase64String(Encoding.UTF8.GetBytes(clePriveeEnClair));
+                
+                // On utilise le mot de passe de l'utilisateur pour chiffrer sa clé RSA
+                string clePriveeChiffree = ChiffrerClePrivee(clePriveeEnClair, model.MotDePasse);
+                Console.WriteLine("Clé privée RSA chiffrée : " + clePriveeChiffree);
 
-                // 5. Créer l'entité Utilisateur
+                // 5. Création entité
                 var nouvelUtilisateur = new Utilisateur
                 {
                     NomUtilisateur = model.NomUtilisateur,
@@ -64,16 +58,11 @@ namespace Partage_de_fichier.Controllers
                     ClePriveeRsaChiffree = clePriveeChiffree
                 };
 
-                // 6. Sauvegarder en base de données
                 _context.Utilisateurs.Add(nouvelUtilisateur);
                 _context.SaveChanges();
 
-                // Rediriger vers la page de connexion après succès
                 return RedirectToAction("Login", "Account");
             }
-
-
-
             return View(model);
         }
         [HttpGet]
@@ -130,6 +119,29 @@ namespace Partage_de_fichier.Controllers
         {
             await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             return RedirectToAction("Login", "Account");
+        }
+
+        private string ChiffrerClePrivee(string texteAChiffrer, string motDePasse)
+        {
+            byte[] salt = RandomNumberGenerator.GetBytes(16); // Sel pour rendre le chiffrement unique
+            using var deriveBytes = new Rfc2898DeriveBytes(motDePasse, salt, 100000, HashAlgorithmName.SHA256);
+            byte[] key = deriveBytes.GetBytes(32); // Clé AES 256 bits
+            byte[] iv = RandomNumberGenerator.GetBytes(16);  // Vecteur d'initialisation
+
+            using var aes = Aes.Create();
+            aes.Key = key;
+            aes.IV = iv;
+
+            using var mStream = new MemoryStream();
+            using (var cStream = new CryptoStream(mStream, aes.CreateEncryptor(), CryptoStreamMode.Write))
+            using (var sw = new StreamWriter(cStream))
+            {
+                sw.Write(texteAChiffrer);
+            }
+
+            // On concatène Sel + IV + Données chiffrées pour pouvoir déchiffrer plus tard
+            var result = salt.Concat(iv).Concat(mStream.ToArray()).ToArray();
+            return Convert.ToBase64String(result);
         }
 
 
