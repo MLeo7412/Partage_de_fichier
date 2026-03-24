@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
 using Partage_de_fichier.Data;
@@ -19,37 +19,39 @@ namespace Partage_de_fichier.Controllers
             _context = context;
         }
 
-       
         [HttpGet]
         public IActionResult Register()
         {
             return View();
         }
 
-        // Traite le formulaire d'inscription
+        // 1. Traite le formulaire d'inscription
         [HttpPost]
         [ValidateAntiForgeryToken]
         public IActionResult Register(RegisterViewModel model)
         {
             if (ModelState.IsValid)
             {
-                // 1. Vérif existence...
-                if (_context.Utilisateurs.Any(u => u.NomUtilisateur == model.NomUtilisateur)) { /* ... */ }
+                // Vérifier si l'utilisateur existe déjà
+                if (_context.Utilisateurs.Any(u => u.NomUtilisateur == model.NomUtilisateur))
+                {
+                    ModelState.AddModelError("", "Ce nom d'utilisateur est déjà pris.");
+                    return View(model);
+                }
 
-                // 2. Hachage du mot de passe pour l'auth
+                // Hachage du mot de passe pour l'authentification
                 string hash = BCrypt.Net.BCrypt.HashPassword(model.MotDePasse);
 
-                // 3. Génération RSA
+                // Génération de la paire de clés RSA
                 using var rsa = RSA.Create(2048);
                 string clePublique = rsa.ExportRSAPublicKeyPem();
                 string clePriveeEnClair = rsa.ExportRSAPrivateKeyPem();
 
-                
-                // On utilise le mot de passe de l'utilisateur pour chiffrer sa clé RSA
+                // Vrai chiffrement de la clé privée RSA avec AES
                 string clePriveeChiffree = ChiffrerClePrivee(clePriveeEnClair, model.MotDePasse);
                 Console.WriteLine("Clé privée RSA chiffrée : " + clePriveeChiffree);
 
-                // 5. Création entité
+                // Création de l'entité
                 var nouvelUtilisateur = new Utilisateur
                 {
                     NomUtilisateur = model.NomUtilisateur,
@@ -65,13 +67,14 @@ namespace Partage_de_fichier.Controllers
             }
             return View(model);
         }
+
         [HttpGet]
         public IActionResult Login()
         {
             // Si l'utilisateur est déjà connecté, on l'envoie vers ses fichiers
             if (User.Identity != null && User.Identity.IsAuthenticated)
             {
-                return RedirectToAction("Index", "File"); // On créera ce contrôleur plus tard
+                return RedirectToAction("Index", "File");
             }
             return View();
         }
@@ -83,33 +86,43 @@ namespace Partage_de_fichier.Controllers
         {
             if (ModelState.IsValid)
             {
-                // A. Chercher l'utilisateur dans la base de données
                 var utilisateur = _context.Utilisateurs.SingleOrDefault(u => u.NomUtilisateur == model.NomUtilisateur);
 
-                // B. Vérifier le mot de passe avec Bcrypt
+                // Vérification du mot de passe avec le Hash en BDD
                 if (utilisateur != null && BCrypt.Net.BCrypt.Verify(model.MotDePasse, utilisateur.MotDePasseHash))
                 {
-                    // C. Créer la "carte d'identité" (Claims) de l'utilisateur pour la session
-                    var claims = new List<Claim>
-            {
-                new Claim(ClaimTypes.NameIdentifier, utilisateur.IdUtilisateur.ToString()),
-                new Claim(ClaimTypes.Name, utilisateur.NomUtilisateur)
-            };
+                    try
+                    {
+                        // 1. On déchiffre la clé RSA et on la met en Session
+                        string clePriveeEnClair = DechiffrerClePrivee(utilisateur.ClePriveeRsaChiffree, model.MotDePasse);
+                        HttpContext.Session.SetString("UserPrivateKey", clePriveeEnClair);
 
-                    var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+                        // 2. CRÉATION DU COOKIE DE CONNEXION (C'est ce qu'il te manquait !)
+                        var claims = new List<Claim>
+                        {
+                            new Claim(ClaimTypes.NameIdentifier, utilisateur.IdUtilisateur.ToString()),
+                            new Claim(ClaimTypes.Name, utilisateur.NomUtilisateur)
+                        };
 
-                    // D. Connecter l'utilisateur (Création du cookie sécurisé)
-                    await HttpContext.SignInAsync(
-                        CookieAuthenticationDefaults.AuthenticationScheme,
-                        new ClaimsPrincipal(claimsIdentity));
+                        var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
 
-                    // E. Rediriger vers la page des fichiers
-                    return RedirectToAction("Index", "File");
+                        await HttpContext.SignInAsync(
+                            CookieAuthenticationDefaults.AuthenticationScheme,
+                            new ClaimsPrincipal(claimsIdentity));
+
+                        // 3. Redirection vers l'accueil des fichiers
+                        return RedirectToAction("Index", "File");
+                    }
+                    catch (Exception ex)
+                    {
+                        // En cas d'erreur de déchiffrement (ex: ancien compte mal chiffré)
+                        ModelState.AddModelError("", "Erreur technique de sécurité : " + ex.Message);
+                        return View(model);
+                    }
                 }
 
                 ModelState.AddModelError("", "Nom d'utilisateur ou mot de passe incorrect.");
             }
-
             return View(model);
         }
 
@@ -118,8 +131,11 @@ namespace Partage_de_fichier.Controllers
         public async Task<IActionResult> Logout()
         {
             await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+            HttpContext.Session.Clear(); // On vide aussi la session par sécurité !
             return RedirectToAction("Login", "Account");
         }
+
+        // --- MÉTHODES UTILITAIRES DE CRYPTOGRAPHIE ---
 
         private string ChiffrerClePrivee(string texteAChiffrer, string motDePasse)
         {
@@ -144,6 +160,35 @@ namespace Partage_de_fichier.Controllers
             return Convert.ToBase64String(result);
         }
 
+        private string DechiffrerClePrivee(string donneeChiffreeBase64, string motDePasse)
+        {
+            // 1. On transforme le texte Base64 en paquet d'octets
+            byte[] fullPackage = Convert.FromBase64String(donneeChiffreeBase64);
 
+            // 2. On extrait le Sel (les 16 premiers octets)
+            byte[] salt = fullPackage.Take(16).ToArray();
+
+            // 3. On extrait l'IV (les 16 octets suivants)
+            byte[] iv = fullPackage.Skip(16).Take(16).ToArray();
+
+            // 4. Le reste, ce sont les données chiffrées
+            byte[] cipherText = fullPackage.Skip(32).ToArray();
+
+            // 5. On régénère la MÊME clé AES en utilisant le mot de passe + le sel extrait
+            using var deriveBytes = new Rfc2898DeriveBytes(motDePasse, salt, 100000, HashAlgorithmName.SHA256);
+            byte[] key = deriveBytes.GetBytes(32);
+
+            // 6. On déchiffre avec AES
+            using var aes = Aes.Create();
+            aes.Key = key;
+            aes.IV = iv;
+
+            using var mStream = new MemoryStream(cipherText);
+            using var cStream = new CryptoStream(mStream, aes.CreateDecryptor(), CryptoStreamMode.Read);
+            using var sr = new StreamReader(cStream);
+
+            // On obtient enfin la clé RSA originale en clair !
+            return sr.ReadToEnd();
+        }
     }
 }
