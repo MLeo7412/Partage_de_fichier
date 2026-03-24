@@ -4,21 +4,35 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Ajouter les services MVC au conteneur.
+// --- 1. CONFIGURATION DES SERVICES ---
+
+// Ajouter les services MVC au conteneur
 builder.Services.AddControllersWithViews();
 
-builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
-    .AddCookie(options =>
-    {
-        options.LoginPath = "/Account/Login"; // Redirige ici si l'utilisateur n'est pas connect�
-        options.ExpireTimeSpan = TimeSpan.FromHours(2); // La session expire apr�s 2h
-    });
-
-//Enregistrer ApplicationDbContext pour utiliser PostgreSQL
+// Enregistrer ApplicationDbContext pour utiliser PostgreSQL
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+// Configuration de l'authentification (Cookies)
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.LoginPath = "/Account/Login"; // Redirige ici si non connecté
+        options.ExpireTimeSpan = TimeSpan.FromHours(2); // Le cookie expire après 2h
+    });
+
+// Configuration des Sessions (Obligatoire pour stocker la clé RSA)
+builder.Services.AddDistributedMemoryCache(); 
+builder.Services.AddSession(options => {
+    options.IdleTimeout = TimeSpan.FromMinutes(15); // La clé s'efface de la mémoire après 15min d'inactivité
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
+});
+
+
 var app = builder.Build();
+
+// --- 2. CONFIGURATION  HTTP 
 
 if (!app.Environment.IsDevelopment())
 {
@@ -30,10 +44,12 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 
 app.UseRouting();
+
+// Activer la session AVANT l'authentification
+app.UseSession();
+
 app.UseAuthentication(); 
 app.UseAuthorization();  
-
-app.UseAuthorization();
 
 app.MapControllerRoute(
     name: "default",
