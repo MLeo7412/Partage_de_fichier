@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Partage_de_fichier.Data;
@@ -74,19 +74,29 @@ namespace Partage_de_fichier.Controllers
                 return View(model);
             }
 
+            // --- CORRECTION DU DÉCHIFFREMENT ---
+            // On récupère la clé privée RSA en clair depuis la session
+            string? clePriveePem = HttpContext.Session.GetString("UserPrivateKey");
+
+            if (string.IsNullOrEmpty(clePriveePem))
+            {
+                // Si la session a expiré, on redirige vers le login
+                return RedirectToAction("Login", "Account");
+            }
+
             try
             {
                 // 3. Déchiffrer la clé AES avec la clé PRIVÉE du propriétaire
-                string clePriveePem = Encoding.UTF8.GetString(Convert.FromBase64String(accesProprietaire.Destinataire.ClePriveeRsaChiffree));
                 using RSA rsaProprietaire = RSA.Create();
                 rsaProprietaire.ImportFromPem(clePriveePem);
 
                 byte[] cleAesChiffreeBytes = Convert.FromBase64String(accesProprietaire.CleAesChiffree);
                 byte[] cleAesEnClair = rsaProprietaire.Decrypt(cleAesChiffreeBytes, RSAEncryptionPadding.OaepSHA256);
 
-                // 4. Re-chiffrer la clé AES avec la clé PUBLIQUE du destinataire
+                // 4. Re-chiffrer la clé AES avec la clé PUBLIQUE du destinataire (Directement depuis la BDD)
                 using RSA rsaCible = RSA.Create();
                 rsaCible.ImportFromPem(utilisateurCible.ClePubliqueRsa);
+
                 byte[] nouvelleCleAesChiffree = rsaCible.Encrypt(cleAesEnClair, RSAEncryptionPadding.OaepSHA256);
 
                 // 5. Sauvegarder le nouvel accès dans la base de données
@@ -103,7 +113,7 @@ namespace Partage_de_fichier.Controllers
                 TempData["MessageSucces"] = $"Le fichier a été partagé avec succès à {utilisateurCible.NomUtilisateur}.";
                 return RedirectToAction("Index", "File");
             }
-            catch (Exception)
+            catch (CryptographicException)
             {
                 ModelState.AddModelError("", "Une erreur cryptographique est survenue lors du partage.");
                 return View(model);
