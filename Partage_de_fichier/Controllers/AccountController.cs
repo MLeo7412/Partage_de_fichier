@@ -135,19 +135,24 @@ namespace Partage_de_fichier.Controllers
             return RedirectToAction("Login", "Account");
         }
 
-        // --- MÉTHODES UTILITAIRES DE CRYPTOGRAPHIE ---
-
         private string ChiffrerClePrivee(string texteAChiffrer, string motDePasse)
-        {
-            byte[] salt = RandomNumberGenerator.GetBytes(16); // Sel pour rendre le chiffrement unique
-            using var deriveBytes = new Rfc2898DeriveBytes(motDePasse, salt, 100000, HashAlgorithmName.SHA256);
-            byte[] key = deriveBytes.GetBytes(32); // Clé AES 256 bits
-            byte[] iv = RandomNumberGenerator.GetBytes(16);  // Vecteur d'initialisation
+        {    
+            // 1. On génère un "Sel" (16 octets) unique pour renforcer le mot de passe
+            byte[] salt = RandomNumberGenerator.GetBytes(16);
 
+            // 2. On crée une clé AES ultra-sécurisée (32 octets) à partir du mot de passe et du Sel
+            using var deriveBytes = new Rfc2898DeriveBytes(motDePasse, salt, 100000, HashAlgorithmName.SHA256);
+            byte[] key = deriveBytes.GetBytes(32);
+
+            // 3. On génère un Vecteur d'Initialisation (IV) de 16 octets pour démarrer le chiffrement
+            byte[] iv = RandomNumberGenerator.GetBytes(16);
+
+            // 4. On configure l'algorithme AES avec notre clé et notre IV
             using var aes = Aes.Create();
             aes.Key = key;
             aes.IV = iv;
 
+            // 5. On chiffre la clé privée (texteAChiffrer) dans un flux en mémoire
             using var mStream = new MemoryStream();
             using (var cStream = new CryptoStream(mStream, aes.CreateEncryptor(), CryptoStreamMode.Write))
             using (var sw = new StreamWriter(cStream))
@@ -155,8 +160,10 @@ namespace Partage_de_fichier.Controllers
                 sw.Write(texteAChiffrer);
             }
 
-            // On concatène Sel + IV + Données chiffrées pour pouvoir déchiffrer plus tard
+            // 6. On assemble le paquet complet : Sel + IV + Données chiffrées (dans cet ordre précis !)
             var result = salt.Concat(iv).Concat(mStream.ToArray()).ToArray();
+
+            // On renvoie le paquet sous forme de texte (Base64) pour le sauvegarder facilement en BDD
             return Convert.ToBase64String(result);
         }
 
