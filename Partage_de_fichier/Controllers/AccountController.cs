@@ -97,7 +97,7 @@ namespace Partage_de_fichier.Controllers
                         string clePriveeEnClair = DechiffrerClePrivee(utilisateur.ClePriveeRsaChiffree, model.MotDePasse);
                         HttpContext.Session.SetString("UserPrivateKey", clePriveeEnClair);
 
-                        // 2. CRÉATION DU COOKIE DE CONNEXION (C'est ce qu'il te manquait !)
+                        // 2. CRÉATION DU COOKIE DE CONNEXION 
                         var claims = new List<Claim>
                         {
                             new Claim(ClaimTypes.NameIdentifier, utilisateur.IdUtilisateur.ToString()),
